@@ -1,0 +1,51 @@
+{
+	"name": "MDF_DEMO_SALES",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "MDF_DEMO_TERRITORY",
+						"type": "DatasetReference"
+					},
+					"name": "TERRITORY"
+				},
+				{
+					"dataset": {
+						"referenceName": "MDF_DEMO_DS_ADLS_SOH",
+						"type": "DatasetReference"
+					},
+					"name": "SALESORDER"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "MDF_DEMO_OUTPUT",
+						"type": "DatasetReference"
+					},
+					"name": "Target"
+				}
+			],
+			"transformations": [
+				{
+					"name": "SelectRequired"
+				},
+				{
+					"name": "DeriveCountryName"
+				},
+				{
+					"name": "CountrySales"
+				},
+				{
+					"name": "SelectSalesNeeded"
+				},
+				{
+					"name": "AggSales"
+				}
+			],
+			"script": "source(output(\n\t\tTerritoryID as short,\n\t\tName as string,\n\t\tCountryRegionCode as string,\n\t\tGroup as string,\n\t\tSalesYTD as double,\n\t\tSalesLastYear as double,\n\t\tCostYTD as double,\n\t\tCostLastYear as double,\n\t\trowguid as string,\n\t\tModifiedDate as timestamp\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false) ~> TERRITORY\nsource(output(\n\t\tSalesOrderID as integer,\n\t\tRevisionNumber as short,\n\t\tOrderDate as timestamp,\n\t\tDueDate as timestamp,\n\t\tShipDate as timestamp,\n\t\tStatus as short,\n\t\tOnlineOrderFlag as boolean,\n\t\tSalesOrderNumber as string,\n\t\tPurchaseOrderNumber as string,\n\t\tAccountNumber as string,\n\t\tCustomerID as short,\n\t\tSalesPersonID as short,\n\t\tTerritoryID as short,\n\t\tBillToAddressID as short,\n\t\tShipToAddressID as short,\n\t\tShipMethodID as short,\n\t\tCreditCardID as short,\n\t\tCreditCardApprovalCode as string,\n\t\tCurrencyRateID as short,\n\t\tSubTotal as double,\n\t\tTaxAmt as double,\n\t\tFreight as double,\n\t\tTotalDue as double,\n\t\tComment as string,\n\t\trowguid as string,\n\t\tModifiedDate as timestamp\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false) ~> SALESORDER\nTERRITORY select(mapColumn(\n\t\tTerritoryID,\n\t\tName,\n\t\tCountryRegionCode,\n\t\tGroup,\n\t\tModifiedDate\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SelectRequired\nSelectRequired derive(Country = case(CountryRegionCode == 'US','United States','Others')) ~> DeriveCountryName\nDeriveCountryName, SALESORDER join(SelectRequired@TerritoryID == SALESORDER@TerritoryID,\n\tjoinType:'inner',\n\tbroadcast: 'auto')~> CountrySales\nCountrySales select(mapColumn(\n\t\tTerritoryID = SelectRequired@TerritoryID,\n\t\tName,\n\t\tCountryRegionCode,\n\t\tGroup,\n\t\tCountry,\n\t\tSalesOrderID,\n\t\tSubTotal,\n\t\tTaxAmt,\n\t\tFreight,\n\t\tTotalDue\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SelectSalesNeeded\nSelectSalesNeeded aggregate(groupBy(Country),\n\tTotalAmount = sum(SubTotal),\n\t\tTotalTax = sum(TaxAmt),\n\t\tTotalSalesOrders = count(SalesOrderID),\n\t\tTotalFreight = sum(Freight)) ~> AggSales\nAggSales sink(allowSchemaDrift: true,\n\tvalidateSchema: false,\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\tsaveOrder: 1) ~> Target"
+		}
+	}
+}
